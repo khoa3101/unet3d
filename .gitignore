@@ -1,0 +1,10 @@
+__pycache__
+.vscode
+.ipynb_checkpoints
+*.ipynb
+checkpoints
+data
+results
+ISBI2012
+SIIM
+wandb
