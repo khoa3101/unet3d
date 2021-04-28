@@ -8,16 +8,13 @@ class KiTS2019(Dataset):
     def __init__(self, path, mode='train', n_channel=1):
         super(KiTS2019, self).__init__()
 
-        self.paths = sorted(Path(path).glob('preprocessed_3d/%s/case_*' % mode))
+        self.paths = sorted(Path(path).glob('%s/case_*' % mode))
         self.mode = mode
 
         train_transform = tio.Compose([
-            tio.RandomMotion(p=0.2),
-            tio.RandomBiasField(p=0.3),
-            tio.RandomNoise(p=0.5),
             tio.RandomFlip(axes=(2,)),
             tio.OneOf({
-                tio.RandomAffine(scales=0.002): 0.8,
+                tio.RandomAffine(translation=0.002): 0.8,
                 tio.RandomElasticDeformation(): 0.2,
             }, p=0.3),
             tio.RescaleIntensity(out_min_max=(-1, 1)),
@@ -43,9 +40,8 @@ class KiTS2019(Dataset):
         vol = np.clip(vol, -80, 300)
         vol = self.transform[self.mode](vol)
         label = tio.LabelMap(self.paths[index] / 'segmentation.nii.gz')
-        label = label[tio.DATA]
-        label = np.clip(label, -80, 300)
         label = self.transform[self.mode](label)
+        label = label[tio.DATA]
         return vol, label
 
     def __len__(self):

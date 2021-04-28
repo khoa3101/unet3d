@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn 
+import torch.nn.functional as F
 
 class DiceScore(nn.Module):
     def __init__(self, threshold=0.5, smooth=1.0, axis=None):
@@ -36,8 +37,8 @@ class DiceCELoss(nn.Module):
         self.weight_dice = weight_dice
 
     def forward(self, preds, labels):
-        targets = targets.argmax(1).long()
-        _ce = F.nll_loss(inputs, targets)
+        arg_labels = labels.argmax(1).long()
+        _ce = F.nll_loss(torch.log(preds), arg_labels)
 
         _dice = 0.0
         _coeff = 0.0

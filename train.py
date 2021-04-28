@@ -82,12 +82,11 @@ def train(epoch, model, train_loader, val_loader, optimizer, scheduler, loss, sc
             epoch+1, EPOCH, train_loss/train_batch, train_score_overall/train_batch, train_score_primary/train_batch
         ))
 
-        if (train_batch+1) % 10 == 0:
-            wandb.log({
-                'Train/Loss': train_loss/train_batch, 
-                'Train/Dice Score overall': train_score_overall/train_batch, 
-                'Train/Dice Score primary': train_score_primary/train_batch
-            })
+        wandb.log({
+            'Train/Loss': train_loss/train_batch, 
+            'Train/Dice Score overall': train_score_overall/train_batch, 
+            'Train/Dice Score primary': train_score_primary/train_batch
+        })
 
     val_score_overall, val_score_primary , _ = val(model, val_loader, score_overall, score_primary)
 
@@ -129,11 +128,10 @@ def val(model, val_loader, score_overall, score_primary):
                 val_score_overall/val_batch, val_score_primary/val_batch
             ))
 
-            if (val_batch+1) % 2 == 0:
-                wandb.log({
-                    'Val/Dice Score overall': val_score_overall/val_batch, 
-                    'Val/Dice Score primary': val_score_primary/val_batch
-                })
+            wandb.log({
+                'Val/Dice Score overall': val_score_overall/val_batch, 
+                'Val/Dice Score primary': val_score_primary/val_batch
+            })
     
     return val_score_overall/val_batch, val_score_primary/val_batch, preds
 
