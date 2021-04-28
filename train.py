@@ -18,7 +18,7 @@ parser = argparse.ArgumentParser(description='Unet')
 parser.add_argument('-p', '--path', default='KiTS2019', type=str, help='Path to data folder')
 parser.add_argument('-lr', '--learning_rate', default=1e-4, type=float, help='Learning rate of optimzer')
 parser.add_argument('-b', '--batch_size', default=1, type=int, help='Batch size of dataloader')
-parser.add_argument('-e', '--epoch', default=5, type=int, help='Epoch to train model')
+parser.add_argument('-e', '--epoch', default=100, type=int, help='Epoch to train model')
 parser.add_argument('-n', '--n_class', default=3, type=int, help='Number of class to segmentation')
 parser.add_argument('-c', '--n_channel', default=1, type=int, help='Number of channels')
 parser.add_argument('-s', '--seed', default=31, type=str, help='Random seed')
@@ -82,12 +82,12 @@ def train(epoch, model, train_loader, val_loader, optimizer, scheduler, loss, sc
             epoch+1, EPOCH, train_loss/train_batch, train_score_overall/train_batch, train_score_primary/train_batch
         ))
 
-        # if (train_batch+1) % 10 == 0:
-        #     wandb.log({
-        #         'Train/Loss': train_loss/train_batch, 
-        #         'Train/Dice Score overall': train_score_overall/train_batch, 
-        #         'Train/Dice Score primary': train_score_primary/train_batch
-        #     })
+        if (train_batch+1) % 10 == 0:
+            wandb.log({
+                'Train/Loss': train_loss/train_batch, 
+                'Train/Dice Score overall': train_score_overall/train_batch, 
+                'Train/Dice Score primary': train_score_primary/train_batch
+            })
 
     val_score_overall, val_score_primary , _ = val(model, val_loader, score_overall, score_primary)
 
@@ -129,11 +129,11 @@ def val(model, val_loader, score_overall, score_primary):
                 val_score_overall/val_batch, val_score_primary/val_batch
             ))
 
-            # if (val_batch+1) % 2 == 0:
-            #     wandb.log({
-            #         'Val/Dice Score overall': val_score_overall/val_batch, 
-            #         'Val/Dice Score primary': val_score_primary/val_batch
-            #     })
+            if (val_batch+1) % 2 == 0:
+                wandb.log({
+                    'Val/Dice Score overall': val_score_overall/val_batch, 
+                    'Val/Dice Score primary': val_score_primary/val_batch
+                })
     
     return val_score_overall/val_batch, val_score_primary/val_batch, preds
 
@@ -145,7 +145,7 @@ if __name__ == '__main__':
     torch.manual_seed(SEED)
 
     # Prepare Weights and Biases
-    # wandb.init(project="Unet3D", name=DATASET)
+    wandb.init(project="Unet3D", name=DATASET)
 
     # Create folders for storing training results
     print('Creating folders...')
