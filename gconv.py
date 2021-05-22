@@ -106,9 +106,9 @@ class ConvZ3P24(nn.Module):
     def forward(self, x):
         w = self._rotated(self.weight)
         y = F.conv3d(x, w, stride=self.stride, padding=self.padding)
-        y = y.view(y.size(0), -1, 24, y.size(2), y.size(3), y.size(4))
+        y = y.view(y.size(0), 24, -1, y.size(2), y.size(3), y.size(4))
         if self.bias is not None:
-            y = y + self.bias.view(1, -1, 1, 1, 1, 1)
+            y = y + self.bias.view(1, 1, -1, 1, 1, 1)
         return y
 
 
@@ -155,10 +155,10 @@ class ConvP24(nn.Module):
             y = F.conv_transpose3d(x, w, stride=self.stride, padding=self.padding)
         else:
             y = F.conv3d(x, w, stride=self.stride, padding=self.padding)
-        y = y.view(y.size(0), -1, 24, y.size(2), y.size(3), y.size(4))
+        y = y.view(y.size(0), 24, -1, y.size(2), y.size(3), y.size(4))
         
         if self.bias is not None:
-            y = y + self.bias.view(1, -1, 1, 1, 1, 1)
+            y = y + self.bias.view(1, 1, -1, 1, 1, 1)
         return y
 
 
