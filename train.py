@@ -6,6 +6,7 @@ import argparse
 import pandas as pd
 import torch.nn as nn
 import wandb
+from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import DataLoader
 from tqdm import tqdm 
 from dataset import KiTS2019
@@ -47,7 +48,7 @@ def create_folders(path=''):
     if not os.path.isdir(os.path.join(path, 'results')):
         os.mkdir(os.path.join(path, 'results'))
 
-def train(epoch, model, train_loader, val_loader, optimizer, scheduler, loss, score_overall, score_primary):
+def train(epoch, model, train_loader, val_loader, optimizer, scheduler, loss, score_overall, score_primary, writer):
     global COUNT, BEST
     train_bar = tqdm(train_loader)
     train_loss = 0.0
@@ -78,15 +79,18 @@ def train(epoch, model, train_loader, val_loader, optimizer, scheduler, loss, sc
         train_score_overall += _score_overall.item()
         train_score_primary += _score_primary.item()
 
-        train_bar.set_description(desc='[%d/%d] Combine Loss: %.4f, Dice Score overall: %.4f, Dice Score primary: %.4f' % (
+        train_bar.set_description(desc='[%d/%d] Loss: %.4f, Dice overall: %.4f, Dice primary: %.4f' % (
             epoch+1, EPOCH, train_loss/train_batch, train_score_overall/train_batch, train_score_primary/train_batch
         ))
 
-        wandb.log({
-            'Train/Loss': train_loss/train_batch, 
-            'Train/Dice Score overall': train_score_overall/train_batch, 
-            'Train/Dice Score primary': train_score_primary/train_batch
-        })
+        # wandb.log({
+        #     'Train/Loss': train_loss/train_batch, 
+        #     'Train/Dice overall': train_score_overall/train_batch, 
+        #     'Train/Dice primary': train_score_primary/train_batch
+        # })
+        writer.add_scalar('Train/Loss', train_loss/train_batch, train_batch)
+        writer.add_scalar('Train/Dice overall', train_score_overall/train_batch, train_batch)
+        writer.add_scalar('Train/Dice primary', train_score_primary/train_batch, train_batch)
 
     val_score_overall, val_score_primary , _ = val(model, val_loader, score_overall, score_primary)
 
@@ -98,7 +102,7 @@ def train(epoch, model, train_loader, val_loader, optimizer, scheduler, loss, sc
 
     return train_loss/train_batch, train_score_overall/train_batch, train_score_primary/train_batch, val_score_overall, val_score_primary
 
-def val(model, val_loader, score_overall, score_primary):
+def val(model, val_loader, score_overall, score_primary, writer):
     val_bar = tqdm(val_loader)
     val_score_overall = 0.0
     val_score_primary = 0.0
@@ -124,14 +128,40 @@ def val(model, val_loader, score_overall, score_primary):
                 pred = pred.detach().cpu()
             preds.append(pred.numpy()[0])
 
-            val_bar.set_description(desc='Dice Score overall: %.4f, Dice Score primary: %.4f' % (
+            val_bar.set_description(desc='Dice overall: %.4f, Dice primary: %.4f' % (
                 val_score_overall/val_batch, val_score_primary/val_batch
             ))
 
-            wandb.log({
-                'Val/Dice Score overall': val_score_overall/val_batch, 
-                'Val/Dice Score primary': val_score_primary/val_batch
-            })
+            # wandb.log({
+            #     'Val/Dice overall': val_score_overall/val_batch, 
+            #     'Val/Dice primary': val_score_primary/val_batch
+            # })
+            writer.add_scalar('Val/Dice overall', val_score_overall/val_batch, val_batch)
+            writer.add_scalar('Val/Dice primary', val_score_primary/val_batch, val_batch)
+            
+            if val_batch == 1:
+                # Log predict results to wandb
+                pred = pred.numpy()[0, :, 18].argmax(0)
+                if torch.cuda.is_available():
+                    label = label.cpu().numpy()[0, :, 18].argmax(0)
+                class_labels = {
+                  0: 'Background',
+                  1: 'Kidney',
+                  2: 'Tumor'
+                }
+
+                mask_img = wandb.Image(vol[0, 0, 18], masks={
+                  'predictions': {
+                    'mask_data': pred,
+                    'class_labels': class_labels
+                  },
+                  'groud_truth': {
+                    'mask_data': label,
+                    'class_labels': class_labels
+                  },
+                })
+
+                wandb.log({'Result': [mask_img]})
     
     return val_score_overall/val_batch, val_score_primary/val_batch, preds
 
@@ -143,7 +173,8 @@ if __name__ == '__main__':
     torch.manual_seed(SEED)
 
     # Prepare Weights and Biases
-    wandb.init(project="Unet3D", name=DATASET)
+    # wandb.init(project="Unet3D", name=DATASET)
+    writer = SummaryWriter()
 
     # Create folders for storing training results
     print('Creating folders...')
@@ -188,14 +219,14 @@ if __name__ == '__main__':
     print('Training...')
     for epoch in range(EPOCH):
         train_loss, train_score_overall, train_score_primary, val_score_overall, val_score_primary = train(
-            epoch, model, train_loader, val_loader, optimizer, scheduler, loss, score_overall, score_primary
+            epoch, model, train_loader, val_loader, optimizer, scheduler, loss, score_overall, score_primary, writer
         )
         result['train_loss'].append(train_loss)
         result['train_score_overall'].append(train_score_overall)
         result['train_score_primary'].append(train_score_primary)
         result['val_score_overall'].append(val_score_overall)
         result['val_score_primary'].append(val_score_primary)
-        
+    writer.close()
     data_frame = pd.DataFrame(
         data={
             'Train loss': result['train_loss'], 'Train dice overall': result['train_score_overall'], 'Train dice primary': result['train_score_primary'],

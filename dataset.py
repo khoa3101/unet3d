@@ -16,7 +16,7 @@ class KiTS2019(Dataset):
             tio.OneOf({
                 tio.RandomAffine(translation=0.002): 0.8,
                 tio.RandomElasticDeformation(): 0.2,
-            }, p=0.3),
+            }),
             tio.RescaleIntensity(out_min_max=(-1, 1)),
             tio.OneHot(3),
         ])
@@ -38,11 +38,15 @@ class KiTS2019(Dataset):
         vol = tio.ScalarImage(self.paths[index] / 'imaging.nii.gz')
         vol = vol[tio.DATA]
         vol = np.clip(vol, -80, 300)
-        vol = self.transform[self.mode](vol)
         label = tio.LabelMap(self.paths[index] / 'segmentation.nii.gz')
-        label = self.transform[self.mode](label)
-        label = label[tio.DATA]
-        return vol, label
+        subject = tio.Subject(
+            vol=tio.ScalarImage(tensor=vol),
+            label=label
+        )
+        subject = self.transform[self.mode](subject)
+        vol = subject['vol'][tio.DATA]
+        label = subject['label'][tio.DATA]
+        return vol.float(), label.float()
 
     def __len__(self):
         return len(self.paths)

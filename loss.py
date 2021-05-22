@@ -20,8 +20,8 @@ class DiceScore(nn.Module):
             preds = preds[:, 1:]
             labels = labels[:, 1:]
 
-        preds = preds.view(-1)
-        labels = labels.view(-1)
+        preds = preds.reshape(-1)
+        labels = labels.reshape(-1)
 
         intersection = (preds * labels).sum()
         dice = (2.*intersection + self.smooth)/(preds.sum() + labels.sum() + self.smooth)
