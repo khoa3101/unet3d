@@ -5,14 +5,14 @@ from skimage.transform import resize
 from multiprocessing.pool import Pool
 from pathlib import Path
 from tqdm import tqdm
-import torchio as tio
+import SimpleITK as sitk
 import numpy as np
 import argparse
 import pickle
 
 def args_parser():
     parser = argparse.ArgumentParser(description='Preprocess data')
-    parser.add_argument('-p', '--path', default='kits19', type=str, help='Path to data folder')
+    parser.add_argument('-p', '--path', required=True, type=str, help='Path to data folder')
     parser.add_argument('-t', '--threshold', default=3.0, type=float, help='Threshold to separate z axis')
     parser.add_argument('-n', '--n_classes', default=3, type=int, help='Number of classes in label')
     args = parser.parse_args()
@@ -34,7 +34,6 @@ def resample_instance(instance, is_seg, new_shape, axis=None, order=3, do_separa
         resize_function = resize
         kwargs = {'mode': 'edge', 'anti_aliasing': False}
         
-    instance = np.array(instance)
     dtype_instance = instance.dtype
     instance = instance.astype(float)
     shape = np.array(instance[0].shape)
@@ -109,20 +108,21 @@ def resample(data, seg, og_spacing, target_spacing, order_data=3, order_seg=0,
 
     if check_separate_z(og_spacing, threshold=threshold):
         do_separate_z = True
-        axis = get_lowres_axis(og_spacing)
+        lowres_axis = get_lowres_axis(og_spacing)
     elif check_separate_z(target_spacing, threshold=threshold):
         do_separate_z = True
-        axis = get_lowres_axis(target_spacing)
+        lowres_axis = get_lowres_axis(target_spacing)
     else:
         do_separate_z = False
-        axis = None
+        lowres_axis = None
 
-    if axis is not None and len(axis) != 1:
+    if lowres_axis is not None and len(lowres_axis) != 1:
+        # case (0.24, 1.25, 1.25)
         do_separate_z = False
 
     if data is not None:
         data_reshaped = resample_instance(
-            data, False, new_shape, axis=axis, 
+            data, False, new_shape, axis=lowres_axis, 
             order=order_data, do_separate_z=do_separate_z, cval=cval_data, order_z=order_z_data
         )
     else:
@@ -130,7 +130,7 @@ def resample(data, seg, og_spacing, target_spacing, order_data=3, order_seg=0,
 
     if seg is not None:
         seg_reshaped = resample_instance(
-            seg, True, new_shape, axis=axis,
+            seg, True, new_shape, axis=lowres_axis,
             order=order_seg, do_separate_z=do_separate_z, cval=cval_seg, order_z=order_z_seg
         )
     else:
@@ -138,16 +138,21 @@ def resample(data, seg, og_spacing, target_spacing, order_data=3, order_seg=0,
 
     return data_reshaped, seg_reshaped
 
-def pre(data):
-    path, (stats, n_classes, threshold) = data
-    data = tio.ScalarImage(path / 'imaging.nii.gz')
-    seg = tio.LabelMap(path / 'segmentation.nii.gz') if (path / 'segmentation.nii.gz').exists() else None
+def pre(inp):
+    path, (stats, n_classes, threshold) = inp
+    data = sitk.ReadImage(str(path / 'imaging.nii.gz'))
+    seg = sitk.ReadImage(str(path / 'segmentation.nii.gz')) if (path / 'segmentation.nii.gz').exists() else None
     preprocessed_folder = path.parents[1] / 'preprocessed'
     preprocessed_folder.mkdir(exist_ok=True)
     save_path = preprocessed_folder / path.name
     save_path.mkdir(exist_ok=True)
 
-    data_reshaped, seg_reshaped = resample(data[tio.DATA], seg[tio.DATA] if seg else None, data.spacing, stats['target_spacing'], order_data=3, order_seg=1, threshold=threshold)
+    data_reshaped, seg_reshaped = resample(
+        sitk.GetArrayFromImage(data).transpose()[None], 
+        sitk.GetArrayFromImage(seg).transpose()[None] if seg else None, 
+        data.GetSpacing(), stats['target_spacing'], 
+        order_data=3, order_seg=1, threshold=threshold
+    )
     clipped = np.clip(data_reshaped, stats['lower_bound'], stats['upper_bound'])
     data_reshaped = (clipped - stats['mean']) / stats['std']
 
@@ -171,10 +176,11 @@ def pre(data):
     
     result = {
         'ID': path.name,
-        'shape': data.shape,
-        'new shape': data_reshaped.shape,
-        'spacing': data.spacing,
-        'orientation': data.orientation,
+        'size': data.GetSize(),
+        'new_size': data_reshaped.shape[1:],
+        'spacing': data.GetSpacing(),
+        'origin': data.GetOrigin(),
+        'direction': data.GetDirection(),
         'class_locations': class_locs
     }
     with open(save_path / ('property.pkl'), 'wb') as f:
@@ -189,11 +195,11 @@ def pre(data):
     return result
 
 def get_voxels_foreground(path):
-    data = tio.ScalarImage(path / 'imaging.nii.gz')
-    spacing = data.spacing
-    size = data.shape[1:]
-    data = data[tio.DATA]
-    seg = tio.LabelMap(path / 'segmentation.nii.gz')[tio.DATA] if (path / 'segmentation.nii.gz').exists() else None
+    data = sitk.ReadImage(str(path / 'imaging.nii.gz'))
+    spacing = data.GetSpacing()
+    size = data.GetSize()
+    data = sitk.GetArrayFromImage(data)
+    seg = sitk.GetArrayFromImage(sitk.ReadImage(str(path / 'segmentation.nii.gz'))) if (path / 'segmentation.nii.gz').exists() else None
     if seg is None:
         return None, spacing, size
 

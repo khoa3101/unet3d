@@ -23,8 +23,8 @@ import matplotlib
 import matplotlib.pyplot as plt
 
 def args_parser():
-    parser = argparse.ArgumentParser(description='Unet3D')
-    parser.add_argument('-p', '--path', default='KiTS2019', type=str, help='Path to data folder')
+    parser = argparse.ArgumentParser(description='Unet3D Trainer')
+    parser.add_argument('-p', '--path', required=True, type=str, help='Path to data folder')
     parser.add_argument('-o', '--output', default='.', type=str, help='Output folder to save training result')
     parser.add_argument('-lr', '--learning_rate', default=1e-2, type=float, help='Learning rate of optimzer')
     parser.add_argument('-b', '--batch_size', default=2, type=int, help='Batch size of dataloader')
@@ -54,7 +54,7 @@ class Trainer(object):
         self.args = args
         create_folders(self.args.output)
         self.logger = Logger('%s/logs' % self.args.output)
-        self.device = torch.device(f'cuda:{self.args.gpu}')
+        self.device = torch.device(f'cuda:{self.args.gpu}' if self.args.gpu else 'cpu')
 
         self.fp16 = fp16
         self.amp_grad_scaler = None
@@ -111,13 +111,11 @@ class Trainer(object):
         self.val_dice_per_class = []
         self.val_dice_avg = []
 
-    def initialize(self, training=True):
+    def initialize(self):
         self.initialize_model_and_loss()
         self.initialize_optimizer_and_scheduler()
+        self.initialize_loaders()
         self.was_intitialized = True
-
-        if training:
-            self.initialize_loaders()
 
         if self.fp16:
             self.initialize_amp()
@@ -194,7 +192,7 @@ class Trainer(object):
     
     def run(self):
         if self.device == 'cpu':
-            self.logger.log('WARNING!! You are attempting to run training on a CPU (torch.cuda.is_available() is false). This can be VERY slow!')
+            self.logger.log('WARNING!! You are attempting to run training on a CPU. This can be VERY slow!')
 
         if cudnn.benchmark and cudnn.deterministic:
             warn(
@@ -204,7 +202,7 @@ class Trainer(object):
             )
 
         if not self.was_intitialized:
-            self.initialize(training=True)
+            self.initialize()
         
         _ = self.train_gen.next()
         _ = self.val_gen.next()
@@ -417,28 +415,27 @@ class Trainer(object):
         torch.save(save_this, fname)
         print('Done, saving took %.2f seconds' % (time() - start_time))
 
-    def load_checkpoint(self, fname, train=True):
+    def load_checkpoint(self, fname):
         print('Loading checkpoint...')
         if not self.was_initialized:
-            self.initialize(train)
+            self.initialize()
 
         checkpoint = torch.load(fname)
         if self.fp16:
             self.initialize_amp()
-            if train:
-                if 'amp_grad_scaler' in checkpoint.keys():
-                    self.amp_grad_scaler.load_state_dict(checkpoint['amp_grad_scaler'])
+            if 'amp_grad_scaler' in checkpoint.keys():
+                self.amp_grad_scaler.load_state_dict(checkpoint['amp_grad_scaler'])
         self.epoch = checkpoint['epoch']
-        self.network.load_state_dict(checkpoint['state_dict'])
-        if train:
-            if checkpoint['optimizer'] is not None:
-                self.optimizer.load_stat_dict(checkpoint['optimizer'])
+        self.model.load_state_dict(checkpoint['state_dict'])
+        
+        if checkpoint['optimizer'] is not None:
+            self.optimizer.load_stat_dict(checkpoint['optimizer'])
 
-            if self.scheduler is not None and hasattr(self.scheduler, 'load_state_dict') and checkpoint['scheduler'] is not None:
-                self.scheduler.load_state_dict(checkpoint['scheduler'])
+        if self.scheduler is not None and hasattr(self.scheduler, 'load_state_dict') and checkpoint['scheduler'] is not None:
+            self.scheduler.load_state_dict(checkpoint['scheduler'])
 
-            if issubclass(self.scheduler.__class__, _LRScheduler):
-                self.scheduler.step(self.epoch)
+        if issubclass(self.scheduler.__class__, _LRScheduler):
+            self.scheduler.step(self.epoch)
 
         self.train_loss, self.val_loss, self.train_dice_avg, self.val_dice_avg = checkpoint['plot_stuff']
         self.best_val_loss, self.best_val_dice = checkpoint['best']
@@ -458,7 +455,7 @@ class Trainer(object):
             epochs = list(range(self.epoch))
 
             ax1.plot(epochs, self.train_loss, color='b', ls='-', label='Train loss')
-            ax1.plot(epochs, self.val_loss, color='b', ls='-', label='Val loss')
+            ax1.plot(epochs, self.val_loss, color='r', ls='-', label='Val loss')
             ax2.plot(epochs, self.train_dice_avg, color='y', ls='--', label='Train dice')
             ax2.plot(epochs, self.val_dice_avg, color='g', ls='--', label='Val dice')
 

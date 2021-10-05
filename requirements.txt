@@ -1,10 +1,5 @@
-imageio
-imgaug
-nibabel
 numpy
-opencv-python
-SimpleITK
+matplotlib
 torch
-torchio
-torchvision
-wandb
+batchgenerators
+SimpleITK
